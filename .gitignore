@@ -1,0 +1,9 @@
+data
+experiment.ipynb
+*.zip
+.github
+.gitone
+.gittwo
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md

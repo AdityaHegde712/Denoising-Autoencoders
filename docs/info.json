@@ -1,0 +1,6 @@
+{
+    "project_name": "Image Denoising with Autoencoders",
+    "purpose": "To develop a functioning autoencoder that is capable of denoising images corrupted by noise.",
+    "short_description": "Our project tackles the challenge of image denoising, removing unwanted noise while preserving fine details in photos. We are building a deep learning autoencoder, starting with simple convolutional architectures and evolving toward advanced architectures slowly. The work combines PyTorch, CUDA acceleration, and open datasets (CIFAR10, Natural Images with Synthetic Noise, SIDD) to train and evaluate models. Aimed at students and enthusiasts in the ML Club community, this project teaches the full pipeline: data prep, model design, training, and benchmarking. The expected outcome is a functional denoiser compared against classical methods and real-world algorithms, showcasing practical AI in action.",
+    "semester": "fa25"
+}
