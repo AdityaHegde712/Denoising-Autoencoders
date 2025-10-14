@@ -4,6 +4,8 @@ experiment.ipynb
 .github
 .gitone
 .gittwo
+common/cifar*
+teams/team-A/tutorial_notebook_learningresources.ipynb
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
