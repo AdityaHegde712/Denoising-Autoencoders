@@ -32,7 +32,6 @@ _For detailed member information including LinkedIn profiles and Discord handles
 | ----------------------------- | ------------- | -------------------------- | ---------------------------------------------------- |
 | Aditya Hegde                  | Project Lead  | adityahegde712@gmail.com   | [@AdityaHegde712](https://github.com/AdityaHegde712) |
 | Leonardo Flores Gonzalez(Leo) | Sub-Team Lead | leof7812@gmail.com         | [@leo7812](https://github.com/leo7812)               |
-| Abhishek Darji                | Sub-Team Lead | abhishekdarji653@gmail.com | [@Darji23](https://github.com/Darji23)               |
 
 _(See members.csv for full roster)_
 
@@ -42,7 +41,7 @@ _(See members.csv for full roster)_
 
 ## Repository Structure
 
-Note: Code is currently private except for a tutorial notebook in `common/` in case anyone else would like to get started. We will release the code once we have our first set of working models!
+Note: For any model weights, please reach out to Aditya Hegde! Eventually we will share a drive link for the model weights across the three teams.
 
 ```
 denoise-ae/
@@ -60,8 +59,8 @@ denoise-ae/
 │  ├─ team-A/
 │  │  ├─ model/              # team’s specific model
 │  │  ├─ experiments/        # configs + notes
-│  │  └─ results/            # small artifacts (plots/metrics JSON)
-│  │  ├─ scripts/            # a folder for team-wise scripts
+│  │  ├─ results/            # small artifacts (plots/metrics JSON)
+│  │  └─ scripts/            # a folder for team-wise scripts
 │  ├─ team-B/
 └─ └─ team-C/
 ```
