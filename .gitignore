@@ -6,6 +6,8 @@ experiment.ipynb
 .gittwo
 common/cifar*
 teams/team-A/tutorial_notebook_learningresources.ipynb
+teams/team-A/runs/20251019_045235
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+**__pycache__**
