@@ -8,6 +8,7 @@ common/cifar*
 teams/team-A/tutorial_notebook_learningresources.ipynb
 teams/team-A/runs/20251019_045235
 *.pt
+temp
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
