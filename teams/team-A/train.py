@@ -35,6 +35,7 @@ def plot_training_history(log_dict, save_path="./outputs/training_curves.png"):
     This creates two graphs:
     1. Loss over time (training and validation)
     2. PSNR over time (training and validation)
+    3. SSIM over time if applicable (training and validation)
     
     Args:
         log_dict: Dictionary with training history
@@ -46,10 +47,10 @@ def plot_training_history(log_dict, save_path="./outputs/training_curves.png"):
     df = df.sort_index()  # Sort by epoch number
     
     # Check if validation metrics exist
-    has_val_metrics = 'val_loss' in df.columns and 'val_psnr' in df.columns
+    has_val_metrics = len([col for col in df.columns if col.startswith('val_')]) >= 2
     
     # Create a figure with 2 subplots side by side
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
     # Plot 1: Loss over epochs
     axes[0].plot(df.index, df['train_loss'], label='Training Loss', marker='o', linewidth=2)
@@ -71,6 +72,19 @@ def plot_training_history(log_dict, save_path="./outputs/training_curves.png"):
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     
+    # Plot 3: SSIM over epochs if available
+    if 'train_ssim' in df.columns:
+        axes[2].plot(df.index, df['train_ssim'], label='Training SSIM', marker='o', linewidth=2)
+        if has_val_metrics and 'val_ssim' in df.columns:
+            axes[2].plot(df.index, df['val_ssim'], label='Validation SSIM', marker='s', linewidth=2)
+        axes[2].set_xlabel('Epoch', fontsize=12)
+        axes[2].set_ylabel('SSIM', fontsize=12)
+        axes[2].set_title('SSIM over Training', fontsize=14, fontweight='bold')
+        axes[2].legend()
+        axes[2].grid(True, alpha=0.3)
+    else:
+        axes[2].axis('off')  # Hide the third plot if SSIM is not available
+        
     plt.tight_layout()
     
     # Save the figure

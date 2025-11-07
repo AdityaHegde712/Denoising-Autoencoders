@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+from pytorch_msssim import SSIM, ssim
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,8 +60,17 @@ class TrainConfig:
     resume: Optional[bool] = False
 
     # Loss
-    loss: str = "mse"  # {"mse", "l1", "charbonnier"}
+    loss: str = "mse"  # {"mse", "l1", "charbonnier", "ssim"}
     charbonnier_eps: float = 1e-3
+
+
+class SSIM_Loss_Wrapper(nn.Module):
+    def __init__(self, data_range: float = 1.0, size_average: bool = True):
+        super().__init__()
+        self.ssim = SSIM(data_range=data_range, size_average=size_average)
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return 1.0 - self.ssim(pred, target)
 
 
 def create_optimizer(model: nn.Module, cfg: TrainConfig) -> Optimizer:
@@ -89,6 +99,8 @@ def create_scheduler(opt: Optimizer, cfg: TrainConfig, steps_per_epoch: int):
 
 
 def create_loss(cfg: TrainConfig):
+    if cfg.loss == "ssim":
+        return SSIM_Loss_Wrapper(data_range=1.0, size_average=True)
     if cfg.loss == "mse":
         return nn.MSELoss(reduction='mean')
     if cfg.loss == "l1":
@@ -239,15 +251,14 @@ class ConvolutionalAutoencoder():
         train_loader: DataLoader,
         optimizer: Optimizer,
         loss_fn: nn.Module,
+        scheduler: SequentialLR | CosineAnnealingLR | None = None
     ) -> Dict[str, float]:
         self.model.train()
 
         # Training logs
         train_loss_meter = AverageMeter()
         train_psnr_meter = AverageMeter()
-        
-        # Scheduler step per epoch
-        scheduler = create_scheduler(optimizer, self.cfg, steps_per_epoch=len(train_loader))
+        train_ssim_meter = AverageMeter()
 
         pbar = tqdm(
             enumerate(train_loader, start=1),
@@ -284,8 +295,11 @@ class ConvolutionalAutoencoder():
                 batch_mse = F.mse_loss(recon, clean, reduction='none').view(bs, -1).mean(dim=1)
                 batch_psnr = psnr_from_mse(batch_mse).mean().item()
                 
+                batch_ssim = ssim(recon, clean, data_range=1.0, size_average=True).item()
+                
                 train_loss_meter.update(loss.item() * max(1, self.cfg.accum_steps), n=bs)
                 train_psnr_meter.update(batch_psnr, n=bs)
+                train_ssim_meter.update(batch_ssim, n=bs)
             
             # Update pbar
             pbar.set_description(
@@ -293,12 +307,14 @@ class ConvolutionalAutoencoder():
             )
             pbar.set_postfix(
                 loss=f"{train_loss_meter.avg:.4f}",
-                psnr=f"{train_psnr_meter.avg:.2f} dB"
+                psnr=f"{train_psnr_meter.avg:.2f} dB",
+                ssim=f"{train_ssim_meter.avg:.2f}"
             )
 
         return {
             "train_loss": train_loss_meter.avg,
             "train_psnr": train_psnr_meter.avg,
+            "train_ssim": train_ssim_meter.avg
         }
 
 
@@ -309,6 +325,8 @@ class ConvolutionalAutoencoder():
 
         optimizer = create_optimizer(self.model, self.cfg)
         loss_fn = create_loss(self.cfg)
+        # Scheduler step per epoch
+        scheduler = create_scheduler(optimizer, self.cfg, steps_per_epoch=len(self.train_loader))
 
         os.makedirs(self.cfg.out_dir, exist_ok=True)
         last_path = os.path.join(self.cfg.out_dir, self.cfg.ckpt_last)
@@ -329,7 +347,7 @@ class ConvolutionalAutoencoder():
 
         for epoch in range(start_epoch, self.cfg.epochs + 1):
             # Train
-            train_stats = self._train_one_epoch(self.train_loader, optimizer, loss_fn)
+            train_stats = self._train_one_epoch(self.train_loader, optimizer, loss_fn, scheduler)
 
             # Validate
             val_stats = self.eval(loss_fn)
@@ -338,10 +356,10 @@ class ConvolutionalAutoencoder():
             log_dict[epoch] = {**train_stats, **val_stats}
 
             # Checkpoints (last + best), and early stopping
-            self.save_checkpoint(last_path, optimizer, epoch, best_val_loss)
+            self.save_checkpoint(last_path, optimizer, epoch, best_val_loss, scheduler)
             if val_stats["val_loss"] < best_val_loss:
                 best_val_loss = val_stats["val_loss"]
-                self.save_checkpoint(best_path, optimizer, epoch, best_val_loss)
+                self.save_checkpoint(best_path, optimizer, epoch, best_val_loss, scheduler)
                 print(f"[Best] Val loss improved to {best_val_loss:.6f} -> saved {best_path}")
                 no_improve_epochs = 0
             else:
@@ -361,6 +379,7 @@ class ConvolutionalAutoencoder():
         self.model.eval()
         loss_meter = AverageMeter()
         psnr_meter = AverageMeter()
+        ssim_meter = AverageMeter()
         with torch.no_grad():
             pbar = tqdm(
                 enumerate(self.val_loader, start=1),
@@ -378,22 +397,25 @@ class ConvolutionalAutoencoder():
                 
                 batch_mse = F.mse_loss(recon, clean, reduction='none').view(clean.size(0), -1).mean(dim=1)
                 batch_psnr = psnr_from_mse(batch_mse).mean().item()
-                
+                batch_ssim = ssim(recon, clean, data_range=1.0, size_average=True).item()
+
                 loss_meter.update(loss.item(), n=clean.size(0))
                 psnr_meter.update(batch_psnr, n=clean.size(0))
-                
+                ssim_meter.update(batch_ssim, n=clean.size(0))
                 # Update pbar
                 pbar.set_description(
                     f"eval  {step}/{len(self.test_loader)}"
                 )
                 pbar.set_postfix(
                     val_loss=f"{loss_meter.avg:.4f}",
-                    val_psnr=f"{psnr_meter.avg:.2f} dB"
+                    val_psnr=f"{psnr_meter.avg:.2f} dB",
+                    val_ssim=f"{ssim_meter.avg:.2f}"
                 )
 
         return {
             "val_loss": loss_meter.avg,
-            "val_psnr": psnr_meter.avg
+            "val_psnr": psnr_meter.avg,
+            "val_ssim": ssim_meter.avg
         }
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
@@ -417,14 +439,16 @@ class ConvolutionalAutoencoder():
         path: str,
         optimizer: torch.optim.Optimizer,
         epoch: int,
-        best_val_loss: float
+        best_val_loss: float,
+        scheduler: Optional[Any] = None,
+        # scaler: Optional[Any] = None,
     ) -> None:
         if not path:
             path = os.path.join(self.cfg.out_dir, self.cfg.ckpt_last)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save({
             "model": self.model.state_dict(),
-            # "scheduler": None if scheduler is None else scheduler.state_dict(),
+            "scheduler": None if scheduler is None else scheduler.state_dict(),
             # "scaler": None if scaler is None else scaler.state_dict(),
             "optimizer": optimizer.state_dict(),
             "epoch": epoch,
