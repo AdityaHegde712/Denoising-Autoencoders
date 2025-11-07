@@ -1,0 +1,20 @@
+{
+  "accum_steps": 1,
+  "batch_size": 8,
+  "charbonnier_eps": 0.001,
+  "ckpt_best": "best.pt",
+  "ckpt_last": "last.pt",
+  "device": "mps",
+  "early_stopping": true,
+  "early_stopping_patience": 15,
+  "epochs": 100,
+  "loss": "l1",
+  "lr": 0.0003,
+  "optimizer": "adam",
+  "out_dir": "./runs/cdae-test/",
+  "resume": false,
+  "scheduler": "cosine",
+  "seed": 42,
+  "warmup_epochs": 5,
+  "weight_decay": 0
+}

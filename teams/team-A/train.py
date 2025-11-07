@@ -112,6 +112,9 @@ def main():
     if torch.cuda.is_available():
         device = "cuda"
         print('Running on the GPU')
+    elif torch.backends.mps.is_available():
+        device = "mps"
+        print('Running on Metal')          
     else:
         device = "cpu"
         print('Running on the CPU')
@@ -143,7 +146,7 @@ def main():
     )
 
     # Set up training configs/dataloaders
-    train_loader, test_loader, val_loader = get_data(TRAIN_PATH, VALIDATE_PATH, TEST_PATH, batch_size=cfg.batch_size)
+    train_loader, val_loader, test_loader = get_data(TRAIN_PATH, VALIDATE_PATH, TEST_PATH, batch_size=cfg.batch_size)
 
     # Model, optimizer, loss
     model = ConvolutionalAutoencoder(

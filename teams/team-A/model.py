@@ -54,7 +54,7 @@ class TrainConfig:
 
     # Repro / IO
     seed: int = 42
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    device: str = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     out_dir: str = "./outputs"
     ckpt_last: str = "last.pt"
     ckpt_best: str = "best.pt"
@@ -442,7 +442,7 @@ class ConvolutionalAutoencoder():
                 ssim_meter.update(batch_ssim, n=clean.size(0))
                 # Update pbar
                 pbar.set_description(
-                    f"eval  {step}/{len(self.test_loader)}"
+                    f"eval  {step}/{len(self.val_loader)}"
                 )
                 pbar.set_postfix(
                     val_loss=f"{loss_meter.avg:.4f}",
@@ -455,6 +455,96 @@ class ConvolutionalAutoencoder():
             "val_psnr": psnr_meter.avg,
             "val_ssim": ssim_meter.avg
         }
+
+    def test(self, checkpoint_path="./outputs/best.pt"):
+        """
+        Test the trained model on the test dataset.
+        
+        Args:
+            checkpoint_path: Path to the saved best model
+        
+        Returns:
+            Dictionary with test metrics and some example images
+        """
+        print("=" * 60)
+        print("TESTING THE MODEL")
+        print("=" * 60)
+        
+        # Load the best model weights
+        print(f"\nLoading best model from: {checkpoint_path}")
+        self.load_checkpoint(path=checkpoint_path, model=self.model, scheduler=None, scaler=None, map_location=self.cfg.device)
+        
+        # checkpoint = torch.load(checkpoint_path, map_location=self.cfg.device)
+        # self.model.load_state_dict(checkpoint['model'])
+        # print(f"Model loaded from epoch {checkpoint['epoch']}")
+        
+        # Put model in evaluation mode (important!)
+        # This turns off things like dropout that are only used during training
+        self.model.eval()
+        self.model.to(self.cfg.device)
+        
+        # We'll calculate metrics and store some examples
+        test_loss_meter = AverageMeter()
+        test_psnr_meter = AverageMeter()
+        test_ssim_meter = AverageMeter()
+        
+        # Store some example images to visualize later
+        example_noisy = []
+        example_denoised = []
+        example_clean = []
+        
+        print("\nRunning model on test images...")
+        
+        # We use torch.no_grad() because we're not training, just testing
+        # This saves memory and makes things faster
+        with torch.no_grad():
+            for batch_idx, (noisy, clean) in enumerate(self.test_loader):
+                # Move images to the device (GPU or CPU)
+                noisy = noisy.to(self.cfg.device)
+                clean = clean.to(self.cfg.device)
+                
+                # Pass noisy images through the model to get denoised version
+                denoised = self.model(noisy)
+                
+                # Calculate loss (how different is denoised from clean?)
+                loss = F.mse_loss(denoised, clean)
+                
+                # Calculate PSNR for each image in the batch
+                batch_mse = F.mse_loss(denoised, clean, reduction='none').view(clean.size(0), -1).mean(dim=1)
+                batch_psnr = psnr_from_mse(batch_mse).mean().item()
+                batch_ssim = ssim(denoised, clean, data_range=1.0, size_average=True).item()
+                
+                # Update our running averages
+                test_loss_meter.update(loss.item(), n=clean.size(0))
+                test_psnr_meter.update(batch_psnr, n=clean.size(0))
+                test_ssim_meter.update(batch_ssim, n=clean.size(0))
+                
+                # Save first 8 images as examples
+                if batch_idx == 0:
+                    num_examples = min(8, noisy.size(0))
+                    example_noisy = noisy[:num_examples].cpu()
+                    example_denoised = denoised[:num_examples].cpu()
+                    example_clean = clean[:num_examples].cpu()
+        
+        # Print final test results
+        print("\n" + "=" * 60)
+        print("TEST RESULTS")
+        print("=" * 60)
+        print(f"Test Loss (MSE): {test_loss_meter.avg:.6f}")
+        print(f"Test PSNR: {test_psnr_meter.avg:.2f} dB")
+        print(f"Test SSIM: {test_ssim_meter.avg:.2f}")
+        print("=" * 60)
+        
+        # Return everything
+        return {
+            'test_loss': test_loss_meter.avg,
+            'test_psnr': test_psnr_meter.avg,
+            'test_ssim': test_ssim_meter.avg,
+            'example_noisy': example_noisy,
+            'example_denoised': example_denoised,
+            'example_clean': example_clean
+        }
+
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -519,7 +609,7 @@ class ConvolutionalAutoencoder():
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
     # instantiate your modules (using your exact class signatures/defs)
     enc = Encoder(in_channels=3, out_channels=32, latent_dim=1500).to(device)
