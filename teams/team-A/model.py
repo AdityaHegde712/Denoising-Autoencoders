@@ -5,13 +5,14 @@ Script to define the functions and classes relevant to the main autoencoder for 
 import os
 from tqdm.auto import tqdm
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 from dataclasses import dataclass, asdict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR, OneCycleLR
 from torch.utils.data import DataLoader
 from pytorch_msssim import SSIM, ssim
 
@@ -73,6 +74,44 @@ class SSIM_Loss_Wrapper(nn.Module):
         return 1.0 - self.ssim(pred, target)
 
 
+class Charbonnier(nn.Module):
+    def __init__(self, eps: float = 1e-3):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, pred, target):
+        diff = pred - target
+        return torch.mean(torch.sqrt(diff * diff + self.eps * self.eps))
+
+
+class Hybrid_SSIM_L1(nn.Module):
+    def __init__(self, alpha: float = 0.8, data_range: float = 1.0, size_average: bool = True, reduction: str = 'mean'):
+        super().__init__()
+        self.alpha = alpha
+        self.ssim = SSIM(data_range=data_range, size_average=size_average)
+        self.l1 = nn.L1Loss(reduction=reduction)
+
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        ssim_loss = 1.0 - self.ssim(pred, target)
+        l1_loss = self.l1(pred, target)
+        return self.alpha * ssim_loss + (1 - self.alpha) * l1_loss
+
+
+def get_ssim(data_range: float = 1.0, size_average: bool = True) -> SSIM_Loss_Wrapper:
+    return SSIM_Loss_Wrapper(data_range=data_range, size_average=size_average)
+
+
+def get_mse(reduction: str = 'mean') -> nn.MSELoss:
+    return nn.MSELoss(reduction=reduction)
+
+
+def get_l1(reduction: str = 'mean') -> nn.L1Loss:
+    return nn.L1Loss(reduction=reduction)
+
+def get_hybrid_ssim_l1(alpha: float = 0.8, data_range: float = 1.0, size_average: bool = True, reduction: str = 'mean') -> Hybrid_SSIM_L1:
+    return Hybrid_SSIM_L1(alpha=alpha, data_range=data_range, size_average=size_average, reduction=reduction)
+
+
 def create_optimizer(model: nn.Module, cfg: TrainConfig) -> Optimizer:
     params = [p for p in model.parameters() if p.requires_grad]
     if cfg.optimizer.lower() == "adam":
@@ -84,10 +123,10 @@ def create_optimizer(model: nn.Module, cfg: TrainConfig) -> Optimizer:
     raise ValueError("Unsupported optimizer: %s" % cfg.optimizer)
 
 
-def create_scheduler(opt: Optimizer, cfg: TrainConfig, steps_per_epoch: int):
+def create_scheduler(opt: Optimizer, cfg: TrainConfig, steps_per_epoch: int) -> Optional[SequentialLR | CosineAnnealingLR | OneCycleLR]:
     if cfg.scheduler == "none":
         return None
-    if cfg.scheduler == "cosine":
+    elif cfg.scheduler == "cosine":
         total_epochs = cfg.epochs
         if cfg.warmup_epochs > 0:
             warmup = LinearLR(opt, start_factor=0.01, end_factor=1.0, total_iters=cfg.warmup_epochs * steps_per_epoch)
@@ -95,26 +134,25 @@ def create_scheduler(opt: Optimizer, cfg: TrainConfig, steps_per_epoch: int):
             return SequentialLR(opt, schedulers=[warmup, cosine], milestones=[cfg.warmup_epochs * steps_per_epoch])
         else:
             return CosineAnnealingLR(opt, T_max=max(1, total_epochs * steps_per_epoch))
+    elif cfg.scheduler == "onecycle":
+        return OneCycleLR(
+            opt, max_lr=2e-4, epochs=cfg.epochs, steps_per_epoch=steps_per_epoch,
+            pct_start=0.1, anneal_strategy='cos'
+        )
     raise ValueError("Unsupported scheduler: %s" % cfg.scheduler)
 
 
 def create_loss(cfg: TrainConfig):
     if cfg.loss == "ssim":
-        return SSIM_Loss_Wrapper(data_range=1.0, size_average=True)
+        return get_ssim(data_range=1.0, size_average=True)
     if cfg.loss == "mse":
-        return nn.MSELoss(reduction='mean')
+        return get_mse(reduction='mean')
     if cfg.loss == "l1":
-        return nn.L1Loss(reduction='mean')
+        return get_l1(reduction='mean')
     if cfg.loss == "charbonnier":
-        class Charbonnier(nn.Module):
-            def __init__(self, eps: float = 1e-3):
-                super().__init__()
-                self.eps = eps
-
-            def forward(self, pred, target):
-                diff = pred - target
-                return torch.mean(torch.sqrt(diff * diff + self.eps * self.eps))
         return Charbonnier(cfg.charbonnier_eps)
+    if cfg.loss == "hybrid_ssim_l1":
+        return get_hybrid_ssim_l1(alpha=0.8, data_range=1.0, size_average=True, reduction='mean')
     raise ValueError("Unsupported loss: %s" % cfg.loss)
 
 
@@ -251,7 +289,7 @@ class ConvolutionalAutoencoder():
         train_loader: DataLoader,
         optimizer: Optimizer,
         loss_fn: nn.Module,
-        scheduler: SequentialLR | CosineAnnealingLR | None = None
+        scheduler: Optional[SequentialLR | CosineAnnealingLR | OneCycleLR] = None
     ) -> Dict[str, float]:
         self.model.train()
 
