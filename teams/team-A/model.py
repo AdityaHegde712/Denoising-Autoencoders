@@ -181,6 +181,7 @@ def deblock(in_channels: int, out_channels: int, stride: int = 2,
             act_fn: nn.Module = nn.SiLU(inplace=True)) -> nn.Sequential:
     # First ConvTranspose2d upsamples; prefer k=4, s=2, p=1 (output_padding=0) to avoid checkerboard
     k1, s1, p1, op1 = (4, 2, 1, 0) if stride == 2 else (3, 1, 1, 0)
+    # if stride == 2: then, k1 = 4, s1 = 2, p1 = 1, op1 = 0, else k1 = 3, s1 = 1, p1 = 1, op1 = 0
     g = 8 if out_channels % 8 == 0 else 1
     return nn.Sequential(
         nn.ConvTranspose2d(in_channels, out_channels, kernel_size=k1, stride=s1,
@@ -203,30 +204,52 @@ class Encoder(nn.Module):
     
         C1 = out_channels
         C2, C3, C4, C5 = C1*2, C1*4, C1*8, C1*16
+        # C1=32, C2=64, C3=128, C4=256, C5=512
+
+        self.e1 = enblock(in_channels, C1, stride, act_fn)  # 512→256
+        self.e2 = enblock(C1, C2, stride, act_fn)  # 256→128
+        self.e3 = enblock(C2, C3, stride, act_fn)  # 128→64
+        self.e4 = enblock(C3, C4, stride, act_fn)  # 64→32
+        self.e5 = enblock(C4, C5, stride, act_fn)  # 32→16
+        self.e6 = enblock(C5, C5, stride, act_fn) # 16→8
 
         # 6× downsample: 512→256→128→64→32→16→8
-        self.net = nn.Sequential(
-            # If my math is right
-            enblock(in_channels, C1, stride),  # 512→256
-            enblock(C1, C2, stride),  # 256→128
-            enblock(C2, C3, stride),  # 128→64
-            enblock(C3, C4, stride),  # 64→32
-            enblock(C4, C5, stride),  # 32→16
-            enblock(C5, C5, stride),  # 16→8
-        )
+        # self.net = nn.Sequential(
+        #     # If my math is right
+        #     # before enblock: [16, 3, 512, 512]
+        #     enblock(in_channels, C1, stride),  # 512→256
+        #     # after enblock: [16, 32, 256, 256]
+        #     enblock(C1, C2, stride),  # 256→128
+        #     # after enblock: [16, 64, 128, 128]
+        #     enblock(C2, C3, stride),  # 128→64
+        #     # after enblock: [16, 128, 64, 64]
+        #     enblock(C3, C4, stride),  # 64→32
+        #     # after enblock: [16, 256, 32, 32]
+        #     enblock(C4, C5, stride),  # 32→16
+        #     # after enblock: [16, 512, 16, 16]
+        #     enblock(C5, C5, stride),  # 16→8
+        #     # after enblock: [16, 512, 8, 8]
+        # )
         
         self.latent_channels = latent_dim
         self.to_latent = nn.Conv2d(C5, self.latent_channels, kernel_size=1, bias=False)
+        # after to_latent: [16, 512, 8, 8]
 
     def forward(self, x):
-        x = self.net(x)
-        z = self.to_latent(x)
-        return z
+        e1_out = self.e1(x)
+        e2_out = self.e2(e1_out)
+        e3_out = self.e3(e2_out)
+        e4_out = self.e4(e3_out)
+        e5_out = self.e5(e4_out)
+        e6_out = self.e6(e5_out)
+        z = self.to_latent(e6_out)
+        skip_connections = [e1_out, e2_out, e3_out, e4_out, e5_out]
+        return z, skip_connections
 
 
 # Define Decoder
 class Decoder(nn.Module):
-    def __init__(self, in_channels: int = 32, out_channels: int = 3, latent_dim: int = LATENT_DIMS):
+    def __init__(self, in_channels: int = 32, out_channels: int = 3, latent_dim: int = LATENT_DIMS, act_fn: nn.Module = nn.SiLU(inplace=True)):
         super().__init__()
         stride = 2
 
@@ -236,22 +259,36 @@ class Decoder(nn.Module):
         self.latent_channels = latent_dim
         self.from_latent = nn.Conv2d(self.latent_channels, C5, kernel_size=1, bias=False)
 
-        self.net = nn.Sequential(
-            deblock(C5, C5, stride),  # 8→16
-            deblock(C5, C4, stride),  # 16→32
-            deblock(C4, C3, stride),  # 32→64
-            deblock(C3, C2, stride),  # 64→128
-            deblock(C2, C1, stride),  # 128→256
-        )
+        # from to_latent: [16, 512, 8, 8]
+        self.d1 = deblock(C5, C5, stride, act_fn)  # 8→16
+        # after d1: [16, 512, 16, 16]
+        self.d2 = deblock(C5, C4, stride, act_fn)  # 16→32
+        # after deblock: [16, 256, 32, 32]
+        self.d3 = deblock(C4, C3, stride, act_fn)  # 32→64
+        # after deblock: [16, 128, 64, 64]
+        self.d4 = deblock(C3, C2, stride, act_fn)  # 64→128
+        # after deblock: [16, 64, 128, 128]
+        self.d5 = deblock(C2, C1, stride, act_fn)  # 128→256
+        # after deblock: [16, 32, 256, 256]
         
         self.head = nn.Sequential(
             nn.ConvTranspose2d(C1, out_channels, kernel_size=4, stride=2, padding=1, bias=False),  # 256→512
+            # after head: [16, 3, 512, 512]
             nn.Sigmoid()
         )
 
-    def forward(self, z):
+    def forward(self, z, skip_connections: List[torch.Tensor]):
         x = self.from_latent(z)
-        x = self.net(x)
+        x = self.d1(x)
+        x = x + skip_connections[4]
+        x = self.d2(x)
+        x = x + skip_connections[3]
+        x = self.d3(x)
+        x = x + skip_connections[2]
+        x = self.d4(x)
+        x = x + skip_connections[1]
+        x = self.d5(x)
+        x = x + skip_connections[0]
         x = self.head(x)
         return x
 
@@ -264,8 +301,8 @@ class Autoencoder(nn.Module):
         self.decoder = decoder
 
     def forward(self, x):
-        encoded = self.encoder(x)
-        decoded = self.decoder(encoded)
+        z, skip_connections = self.encoder(x)
+        decoded = self.decoder(z, skip_connections)
         return decoded
 
 
