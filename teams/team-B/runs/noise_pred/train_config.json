@@ -1,0 +1,20 @@
+{
+  "accum_steps": 1,
+  "batch_size": 8,
+  "charbonnier_eps": 0.001,
+  "ckpt_best": "best.pt",
+  "ckpt_last": "last.pt",
+  "device": "cuda",
+  "early_stopping": true,
+  "early_stopping_patience": 30,
+  "epochs": 300,
+  "loss": "charbonnier",
+  "lr": 0.0003,
+  "optimizer": "adam",
+  "out_dir": "./runs/noise_pred/",
+  "resume": false,
+  "scheduler": "onecycle",
+  "seed": 42,
+  "warmup_epochs": 5,
+  "weight_decay": 0
+}
