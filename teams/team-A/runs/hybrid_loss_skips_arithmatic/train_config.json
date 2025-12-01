@@ -1,0 +1,20 @@
+{
+  "accum_steps": 1,
+  "batch_size": 8,
+  "charbonnier_eps": 0.001,
+  "ckpt_best": "best.pt",
+  "ckpt_last": "last.pt",
+  "device": "cuda",
+  "early_stopping": true,
+  "early_stopping_patience": 30,
+  "epochs": 300,
+  "loss": "hybrid_ssim_l1",
+  "lr": 0.0003,
+  "optimizer": "adam",
+  "out_dir": "./runs/hybrid_loss_skips_arithmatic/",
+  "resume": false,
+  "scheduler": "cosine",
+  "seed": 42,
+  "warmup_epochs": 5,
+  "weight_decay": 0
+}
