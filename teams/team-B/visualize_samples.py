@@ -11,7 +11,7 @@ import torch
 import matplotlib.pyplot as plt
 from utils import get_data
 
-def show_samples(train_path, validate_path, test_path, batch_size=4, num_samples=3):
+def show_samples(train_path, validate_path, test_path, batch_size=4, num_samples=5):
 
     # Load dataloader from utils.py
     train_loader, _, _ = get_data(
@@ -54,3 +54,12 @@ def show_samples(train_path, validate_path, test_path, batch_size=4, num_samples
         plt.axis("off")
 
     plt.show()
+
+
+if __name__ == "__main__":
+    show_samples(
+        train_path="../../data/nisn/train/train/",
+        validate_path="../../data/nisn/validate/validate/",
+        test_path="../../data/nisn/test/test/",
+        batch_size=8,
+    )

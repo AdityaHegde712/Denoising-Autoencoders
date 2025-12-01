@@ -290,7 +290,7 @@ class ConvolutionalAutoencoder():
         best_val_loss = float("inf")
 
         # Tracking setup
-        log_dict = {}
+        log_dict: Dict[int, Dict[str, float]] = {}  # Key: Epoch, value: Dict{ Keys: [train_loss, train_psnr, val_loss, val_psnr] }
         no_improve_epochs = 0
 
         for epoch in range(start_epoch, self.cfg.epochs + 1):
