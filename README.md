@@ -18,9 +18,7 @@ This project explores the problem of **image denoising**—removing unwanted noi
 
 **Project Lead:** Aditya Hegde  
 📧 Email: adityahegde712@gmail.com / aditya.hegde@sjsu.edu <br>
-💼 LinkedIn: [linkedin.com/in/aditya-hegde712](https://www.linkedin.com/in/aditya-hegde712/)  
-📱 Phone: –  
-🏢 Office Hours: -
+💼 LinkedIn: [linkedin.com/in/aditya-hegde712](https://www.linkedin.com/in/aditya-hegde712/) 
 
 **Faculty Advisor:** None
 
