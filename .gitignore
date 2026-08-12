@@ -7,6 +7,9 @@ experiment.ipynb
 common/cifar*
 teams/team-A/tutorial_notebook_learningresources.ipynb
 teams/team-A/runs/20251019_045235
+**predict_outputs
+**predict_images
+teams/team-A/runs/fully_conv_1/outputs
 *.pt
 temp
 .DS_Store
